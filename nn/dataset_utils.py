@@ -54,22 +54,28 @@ def linear_regression_dataset(samples = 200, x_start = 0, x_end = 100, slope = 1
 
     return x.reshape((x.size, 1)), y.reshape((y.size, 1))
 
-def equalize_classes(dataframe, target_name):
+def equalize_classes(dataframe, target_name, reduce_to = None):
     if target_name not in dataframe.columns:
         print(f"invalid target name: {target_name}")
         return
-    
+
     counts = dataframe[target_name].value_counts()
     least = counts.min()
     to_remove = counts - least
-    
+        
     for class_name in to_remove.index:
         temp = dataframe[dataframe[target_name] == class_name]
         drop_count = to_remove[class_name]
-        if drop_count == 0:
-            continue
-        print(f'dropping {drop_count} for class: {class_name}')
-        dataframe.drop(temp.iloc[:drop_count].index, inplace = True)
+        if drop_count > 0:
+            dataframe.drop(temp.iloc[:drop_count].index, inplace = True)
+    
+    # now distribute the remaining rows if reduce_to is specified
+    if reduce_to is not None and reduce_to < len(dataframe):
+        per_class = reduce_to // len(counts)
+        for class_name in counts.index:
+            temp = dataframe[dataframe[target_name] == class_name]
+            if len(temp) > per_class:
+                dataframe.drop(temp.iloc[:len(temp) - per_class].index, inplace = True)
 
     dataframe.reset_index(drop = True, inplace = True)
 

@@ -5,7 +5,7 @@ import io
 
 from nn.trainer import Trainer, RegressionTrainer, Logger
 from nn.optimizers import SGD, Momentum, RMSProp
-from nn.dataset_utils import and_gate_dataset, standardize_data, split_classes, split_data, pca
+from nn.dataset_utils import and_gate_dataset, standardize_data, equalize_classes, split_classes, split_data, pca
 from nn.model_classes import Model, Layer
 from nn.functions import BinaryLoss, MSE, leaky_relu, der_leaky_relu, sigmoid, der_sigmoid, relu, der_relu, mirror, der_mirror
 from nn.plotter import Plotter
@@ -66,18 +66,15 @@ optimizers = {
 def clean_data():
   if st.session_state.form_drop_columns:
     st.session_state.uploaded_dataset.drop(columns=st.session_state.form_drop_columns, inplace=True)
-  if st.session_state.form_number_rows:
-    st.session_state.uploaded_dataset = st.session_state.uploaded_dataset.head(st.session_state.form_number_rows)
   st.toast("Changes Applied.", icon=":material/check_circle:")
 
 def preprocess_dataset():
   raw_data = st.session_state.uploaded_dataset
-  raw_data = raw_data.dropna(ignore_index=True)
+  raw_data = raw_data.dropna(ignore_index=True)  # drop NA rows
   
+  # copy into permanent session state, not just for the form. Needed?
   target_col = st.session_state.form_target_column
   target_type = st.session_state.form_target_type
-
-  # session state
   st.session_state.target_type = target_type
   st.session_state.target_name = target_col
 
@@ -85,6 +82,7 @@ def preprocess_dataset():
     raw_data = pd.get_dummies(raw_data, columns=st.session_state.form_one_hot_columns, drop_first=True, dtype=int)
 
   if target_type == "classification":
+    equalize_classes(raw_data, target_col)  # downsampling
     train_set, test_set = split_classes(raw_data, target_col)
     st.session_state.model = Model(BinaryLoss(), 1)
     st.session_state.trainer = Trainer(st.session_state.model)
@@ -97,6 +95,7 @@ def preprocess_dataset():
     X_means, X_stds = standardize_data(train_set, st.session_state.form_standardize_columns)
     standardize_data(test_set, st.session_state.form_standardize_columns, from_means=X_means, from_stds=X_stds)
 
+  st.session_state.uploaded_dataset = raw_data
   st.session_state.train_set = train_set
   st.session_state.test_set = test_set
   st.session_state.model_compiled = False
@@ -108,6 +107,12 @@ def preprocess_dataset():
 
   st.toast("Preprocessing Applied.", icon=":material/check_circle:")
 
+def adjust_dataset():
+  if st.session_state.form_number_rows < len(st.session_state.uploaded_dataset):  # updated length after initial downsampling
+    if st.session_state.target_type == "classification":
+      equalize_classes(st.session_state.uploaded_dataset, st.session_state.target_name, st.session_state.form_number_rows)
+    else:
+      st.session_state.uploaded_dataset = st.session_state.uploaded_dataset.sample(n=st.session_state.form_number_rows, random_state=42).reset_index(drop=True)
 
 st.header("Dataset")
 dataset_option = st.selectbox("Select Dataset", ["AND Gate (Built-in)", "Upload a Dataset"])
@@ -124,17 +129,23 @@ if dataset_option == "Upload a Dataset":
     st.subheader("Preprocess Dataset")
 
     with st.form("data_cleaning_form"):
-      st.markdown(f"Current total size of dataset: :color[{len(dataset):,} rows]{{background='green'}}.")
-      st.number_input("Adjust size of dataset (rows)", min_value=10, max_value=len(dataset), value=len(dataset), step=100, key="form_number_rows")
       st.multiselect("Select columns to drop", dataset.columns, key="form_drop_columns")
       st.form_submit_button("Apply", on_click=clean_data)
 
     with st.form("preprocess_form"):  # separate re-runs based UI from logic
+      st.markdown("For binary classification, the classes will be :color[equalized]{background='blue'} automatically.")
       st.selectbox("Select the target column", dataset.columns, key="form_target_column")
       st.selectbox("Select the target type", ["regression", "classification"], key="form_target_type")
       st.multiselect("Select columns to one-hot encode", dataset.columns, key="form_one_hot_columns")
       st.multiselect("Select columns to standardize", dataset.columns, key="form_standardize_columns")
       st.form_submit_button("Apply Preprocessing", on_click=preprocess_dataset)
+    
+    with st.form("additional_steps_form"):
+      st.markdown(f"Current total size of dataset: :color[{len(dataset):,} rows]{{background='green'}}.")
+      st.dataframe(st.session_state.uploaded_dataset[st.session_state.target_name].value_counts())
+      st.number_input("Adjust size of dataset (rows)", min_value=10, max_value=len(dataset), value=len(dataset), step=100, key="form_number_rows")
+      st.form_submit_button("Adjust Dataset", on_click=adjust_dataset)
+
 elif dataset_option == "AND Gate (Built-in)":
   if st.session_state.train_set is None or st.session_state.target_name != "Output":
     X_train, y_train = and_gate_dataset(100, 1)
