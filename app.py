@@ -63,13 +63,21 @@ optimizers = {
 
 # DATASET
 
+def clean_data():
+  if st.session_state.form_drop_columns:
+    st.session_state.uploaded_dataset.drop(columns=st.session_state.form_drop_columns, inplace=True)
+  if st.session_state.form_number_rows:
+    st.session_state.uploaded_dataset = st.session_state.uploaded_dataset.head(st.session_state.form_number_rows)
+  st.toast("Changes Applied.", icon=":material/check_circle:")
+
 def preprocess_dataset():
   raw_data = st.session_state.uploaded_dataset
   raw_data = raw_data.dropna(ignore_index=True)
   
-  # session state
   target_col = st.session_state.form_target_column
   target_type = st.session_state.form_target_type
+
+  # session state
   st.session_state.target_type = target_type
   st.session_state.target_name = target_col
 
@@ -98,7 +106,7 @@ def preprocess_dataset():
   X_test, y_test = test_set.drop(columns=[target_col]), test_set[target_col]
   st.session_state.X_y_test = [X_test.to_numpy(), y_test.to_numpy().reshape(-1, 1)]
 
-  st.toast("Preprocessing Applied")
+  st.toast("Preprocessing Applied.", icon=":material/check_circle:")
 
 
 st.header("Dataset")
@@ -107,10 +115,19 @@ dataset_option = st.selectbox("Select Dataset", ["AND Gate (Built-in)", "Upload 
 if dataset_option == "Upload a Dataset":
   uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
   if uploaded_file is not None:
-    dataset = pd.read_csv(uploaded_file)
-    st.session_state.uploaded_dataset = dataset
+    if st.session_state.uploaded_dataset is None:
+      dataset = pd.read_csv(uploaded_file)
+      st.session_state.uploaded_dataset = dataset
+    else:
+      dataset = st.session_state.uploaded_dataset
     st.dataframe(dataset)
     st.subheader("Preprocess Dataset")
+
+    with st.form("data_cleaning_form"):
+      st.markdown(f"Current total size of dataset: :color[{len(dataset):,} rows]{{background='green'}}.")
+      st.number_input("Adjust size of dataset (rows)", min_value=10, max_value=len(dataset), value=len(dataset), step=100, key="form_number_rows")
+      st.multiselect("Select columns to drop", dataset.columns, key="form_drop_columns")
+      st.form_submit_button("Apply", on_click=clean_data)
 
     with st.form("preprocess_form"):  # separate re-runs based UI from logic
       st.selectbox("Select the target column", dataset.columns, key="form_target_column")
@@ -183,6 +200,7 @@ if st.button("Compile Model"):
 
 if st.checkbox("Show Weights and Biases") and st.session_state.model_compiled:
   st.subheader("Weights and Biases")
+  st.write(f"debugging training history string: {st.session_state.history[:len(st.session_state.history)//4]}")
   for i, layer in enumerate(st.session_state.model.layers):
         st.write(f"Layer {i+1} Biases:", layer.b_.T)
   for i, weight in enumerate(st.session_state.model.weights):
