@@ -82,10 +82,15 @@ def preprocess_dataset():
     raw_data = pd.get_dummies(raw_data, columns=st.session_state.form_one_hot_columns, drop_first=True, dtype=int)
 
   if target_type == "classification":
+    value_counts_old = raw_data[target_col].value_counts()
     equalize_classes(raw_data, target_col)  # downsampling
+    value_counts_new = raw_data[target_col].value_counts()
+
     train_set, test_set = split_classes(raw_data, target_col)
     st.session_state.model = Model(BinaryLoss(), 1)
     st.session_state.trainer = Trainer(st.session_state.model)
+
+    st.toast(f"Class counts before: {value_counts_old.to_dict()}\nAfter: {value_counts_new.to_dict()}", icon=":material/check_circle:", duration="infinite")
   else:
     train_set, test_set = split_data(raw_data)
     st.session_state.model = Model(MSE(), 1)
@@ -142,26 +147,24 @@ if dataset_option == "Upload a Dataset":
     
     with st.form("additional_steps_form"):
       st.markdown(f"Current total size of dataset: :color[{len(dataset):,} rows]{{background='green'}}.")
-      st.dataframe(st.session_state.uploaded_dataset[st.session_state.target_name].value_counts())
       st.number_input("Adjust size of dataset (rows)", min_value=10, max_value=len(dataset), value=len(dataset), step=100, key="form_number_rows")
       st.form_submit_button("Adjust Dataset", on_click=adjust_dataset)
 
 elif dataset_option == "AND Gate (Built-in)":
-  if st.session_state.train_set is None or st.session_state.target_name != "Output":
-    X_train, y_train = and_gate_dataset(100, 1)
-    st.session_state.train_set = pd.DataFrame(np.hstack((X_train, y_train)), columns=["Input 1", "Input 2", "Output"])
-    
-    X_test, y_test = and_gate_dataset(50, 2)
-    st.session_state.test_set = pd.DataFrame(np.hstack((X_test, y_test)), columns=["Input 1", "Input 2", "Output"])
-    
-    st.session_state.target_type = "classification"
-    st.session_state.target_name = "Output"
-    
-    st.session_state.X_y_train = [X_train, y_train.reshape(-1, 1)]
-    st.session_state.X_y_test = [X_test, y_test.reshape(-1, 1)]
-    st.session_state.model = Model(BinaryLoss(), 1)
-    st.session_state.trainer = Trainer(st.session_state.model)
-    st.session_state.model_compiled = False
+  X_train, y_train = and_gate_dataset(100, 1)
+  st.session_state.train_set = pd.DataFrame(np.hstack((X_train, y_train)), columns=["Input 1", "Input 2", "Output"])
+  
+  X_test, y_test = and_gate_dataset(50, 2)
+  st.session_state.test_set = pd.DataFrame(np.hstack((X_test, y_test)), columns=["Input 1", "Input 2", "Output"])
+  
+  st.session_state.target_type = "classification"
+  st.session_state.target_name = "Output"
+  
+  st.session_state.X_y_train = [X_train, y_train.reshape(-1, 1)]
+  st.session_state.X_y_test = [X_test, y_test.reshape(-1, 1)]
+  st.session_state.model = Model(BinaryLoss(), 1)
+  st.session_state.trainer = Trainer(st.session_state.model)
+  st.session_state.model_compiled = False
 
 # DISPLAY TRAIN, TEST SETS
 if st.session_state.train_set is None:
@@ -211,7 +214,6 @@ if st.button("Compile Model"):
 
 if st.checkbox("Show Weights and Biases") and st.session_state.model_compiled:
   st.subheader("Weights and Biases")
-  st.write(f"debugging training history string: {st.session_state.history[:len(st.session_state.history)//4]}")
   for i, layer in enumerate(st.session_state.model.layers):
         st.write(f"Layer {i+1} Biases:", layer.b_.T)
   for i, weight in enumerate(st.session_state.model.weights):
