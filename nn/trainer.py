@@ -59,6 +59,8 @@ class Trainer:
         self.learning_rate = learning_rate
         if self.minibatch_size is None:
             self.minibatch_size = features.shape[0]
+
+        num_batches = features.shape[0] // self.minibatch_size
         if log_epochs is None:
             log_epochs = epochs
 

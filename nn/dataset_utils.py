@@ -114,6 +114,7 @@ def pca(features, n_components = 2):  # assume all features are valid (continuou
     # 1. standardize vars, features is a 2D NumPy array
     mean = features.mean(axis=0)
     std = features.std(axis=0)
+    std[std == 0] = 1.0  # Replace 0 std values with 1 to avoid division by zero (keeps the numerator 0)
     array = (features - mean) / std
     
     # 2. covariance matrix
