@@ -74,7 +74,8 @@ class Trainer:
             self.train_batch(real_features, real_targets)
             start_index += self.batch_size
 
-    def train(self, features, targets, batch_size = None, learning_rate = 0.01, epochs = 1, log_epochs = None, verbose = True):
+    def train(self, features, targets, batch_size = None, learning_rate = 0.01, epochs = 1, log_epochs = None, verbose = True, on_epoch_end = None):
+        # on_epoch_end(epochs_done, epochs_total): optional progress callback, called after each epoch
         self.minibatch_size = batch_size  # None means batch GD. for stochastic, specify '1'.
         self.learning_rate = learning_rate
         if self.minibatch_size is None:
@@ -90,6 +91,8 @@ class Trainer:
             self.logger.log_epoch(epoch)
             self.train_epoch(features, targets)
             self.predict(features, targets, for_plot = True, quiet = not verbose)
+            if on_epoch_end is not None:
+                on_epoch_end(epoch + 1, epochs)
     
     def forward_batch(self, features):
         # whole-dataset forward pass without touching per-layer state; returns first output neuron, shape (n_samples,)

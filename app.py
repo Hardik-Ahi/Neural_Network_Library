@@ -305,11 +305,16 @@ if submitted:
   if not st.session_state.model_compiled:
     st.error("Please compile the model first.")
   else:
-    with st.spinner("Training in progress..."):
-      st.session_state.trainer.set_optimizer(optimizers[optimizer]())
-      X_train, y_train = st.session_state.X_y_train
-      st.session_state.trainer.train(X_train, y_train, batch_size, learning_rate, epochs = epochs, verbose = False)
-      st.session_state.history = st.session_state.trainer.save_history()
+    progress_bar = st.progress(0.0, text=f"Epoch 0/{epochs}")
+
+    def update_progress(done, total):
+      progress_bar.progress(done / total, text=f"Epoch {done}/{total}")
+
+    st.session_state.trainer.set_optimizer(optimizers[optimizer]())
+    X_train, y_train = st.session_state.X_y_train
+    st.session_state.trainer.train(X_train, y_train, batch_size, learning_rate, epochs = epochs, verbose = False, on_epoch_end = update_progress)
+    st.session_state.history = st.session_state.trainer.save_history()
+    progress_bar.empty()
     st.success("Training completed!")
 
 # PLOT
