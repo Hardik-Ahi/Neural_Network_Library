@@ -11,6 +11,7 @@ init:
     bias: {index: [first 4 elements]}
 
 updates:                           // one entry per update (batch), across ALL logged epochs, in order
+                                   // capped at the first 700 updates (Logger.MAX_UPDATES), which is all the plots show
     weights_gradient: {index: [[4 elements], ...]}   // gradient that will be applied (given by optimizer)
     bias_gradient: {index: [[4 elements], ...]}
     weights: {index: [[4 elements], ...]}            // after the update

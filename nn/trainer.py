@@ -174,6 +174,7 @@ class Logger:
     """Records training history in a compact, position-indexed format (see file_format.txt)."""
     VERSION = 2
     N_ELEMENTS = 4  # only the first few elements of each tracked array are ever plotted
+    MAX_UPDATES = 700  # plots only show the first 700 updates; logging more just bloats the history
     PREDICTION_LIMIT = 200  # to limit size of the log
 
     def __init__(self):
@@ -228,6 +229,9 @@ class Logger:
         if self.stop:
             return
         updates = self.object['updates']
+        first = next(iter(updates['weights']), None)
+        if first is not None and len(updates['weights'][first]) >= self.MAX_UPDATES:
+            return
         for i in dict.fromkeys(self.object['tracked_weights']):
             updates['weights_gradient'][str(i)].append(self._head(weights_gradients[i]))
             updates['weights'][str(i)].append(self._head(model_weights[i].matrix))

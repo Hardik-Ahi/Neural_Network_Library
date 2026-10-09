@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import io
+import hashlib
 import matplotlib.pyplot as plt
 
 from nn.trainer import Trainer, RegressionTrainer, Logger
@@ -250,41 +251,43 @@ def trainer_cache_key(trainer):
 def load_history(string):  # returns JSON (Python) object from string - serializable
   return Logger.load_data(string)
 
+# `_data` (underscore) is excluded from Streamlit's hashing, which walks large nested lists element by
+# element in Python and is very slow; `history_key` (a short digest of the history) identifies it instead.
 @st.cache_data
-def plot_gradients(data):
-  gradients = Plotter().plot_gradients(data, n_points=700)
+def plot_gradients(_data, history_key):
+  gradients = Plotter().plot_gradients(_data, n_points=700)
   return figure_to_png(gradients)
 
 @st.cache_data
-def plot_weights(data):
-  weights = Plotter().plot_weights(data, n_points=700)
+def plot_weights(_data, history_key):
+  weights = Plotter().plot_weights(_data, n_points=700)
   return figure_to_png(weights)
 
 @st.cache_data
-def plot_score(data, is_classification):
-  score = Plotter().plot_score(data, n_points=700, confusion_matrix=is_classification)
+def plot_score(_data, history_key, is_classification):
+  score = Plotter().plot_score(_data, n_points=700, confusion_matrix=is_classification)
   return figure_to_png(score)
 
 @st.cache_data
-def plot_and_gate_predictions(data, X_train):
-  predictions = Plotter().plot_predictions(data, X_train)
+def plot_and_gate_predictions(_data, history_key, X_train):
+  predictions = Plotter().plot_predictions(_data, X_train)
   return figure_to_png(predictions)
 
 @st.cache_data
-def plot_regression(data, X_train, y_train):
+def plot_regression(_data, history_key, X_train, y_train):
   axis = pca(X_train, n_components=1)
-  regression = Plotter().plot_regression(data, axis, y_train)
+  regression = Plotter().plot_regression(_data, axis, y_train)
   return figure_to_png(regression)
 
 @st.cache_data
-def plot_classification(data, X_train, y_train):
+def plot_classification(_data, history_key, X_train, y_train):
   axis = pca(X_train, n_components=2)
-  classification = Plotter().plot_classification(data, axis[:, 0], axis[:, 1], y_train)
+  classification = Plotter().plot_classification(_data, axis[:, 0], axis[:, 1], y_train)
   return figure_to_png(classification)
 
 @st.cache_data
-def plot_loss_landscape(data, _trainer, X_train, y_train, model_cache_key):
-  contours = Plotter().plot_contours(data, _trainer, X_train, y_train)
+def plot_loss_landscape(_data, history_key, _trainer, X_train, y_train, model_cache_key):
+  contours = Plotter().plot_contours(_data, _trainer, X_train, y_train)
   return figure_to_png(contours)
 
 # TRAIN
@@ -322,34 +325,35 @@ if st.button("Plot History"):
   with st.spinner("Reading training history..."):
     data = load_history(st.session_state.history)
     st.session_state.data = data
+    history_key = hashlib.sha1(st.session_state.history.encode()).hexdigest()
 
   with st.spinner("Plotting gradients..."):
-    gradient_path = plot_gradients(data)
+    gradient_path = plot_gradients(data, history_key)
     st.subheader("Gradients")
     st.image(gradient_path, width='stretch')
 
   with st.spinner("Plotting weights..."):
-    weight_path = plot_weights(data)
+    weight_path = plot_weights(data, history_key)
     st.subheader("Weights")
     st.image(weight_path, width='stretch')
 
   with st.spinner("Plotting accuracy..."):
-    score_path = plot_score(data, st.session_state.target_type == "classification")
+    score_path = plot_score(data, history_key, st.session_state.target_type == "classification")
     st.subheader("Accuracy")
     st.image(score_path, width='stretch')
 
   with st.spinner("Plotting outputs..."):
     if st.session_state.target_type == 'regression':
-      predictions = plot_regression(data, X_train, y_train)
+      predictions = plot_regression(data, history_key, X_train, y_train)
     elif st.session_state.target_type == 'classification':
-      #predictions = plot_and_gate_predictions(st.session_state.history, X_train)
-      predictions = plot_classification(data, X_train, y_train)
+      #predictions = plot_and_gate_predictions(data, history_key, X_train)
+      predictions = plot_classification(data, history_key, X_train, y_train)
     st.subheader("Predictions")
     st.image(predictions, width='stretch')
 
   with st.spinner("Plotting loss landscape (this takes a while)..."):
     model_key = trainer_cache_key(st.session_state.trainer)
-    loss_landscape_path = plot_loss_landscape(data, st.session_state.trainer, X_train, y_train, model_key)
+    loss_landscape_path = plot_loss_landscape(data, history_key, st.session_state.trainer, X_train, y_train, model_key)
     st.subheader("Loss Landscape")
     st.image(loss_landscape_path, width='stretch')
 
