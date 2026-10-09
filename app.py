@@ -66,6 +66,11 @@ optimizers = {
 
 # DATASET
 
+def add_input_layer(n_features):
+  # the input layer is locked: one neuron per feature, no activation
+  st.session_state.model.add_layer(Layer(n_features))
+  st.session_state.activations = ["None"]
+
 def clean_data():
   if st.session_state.form_drop_columns:
     st.session_state.uploaded_dataset.drop(columns=st.session_state.form_drop_columns, inplace=True)
@@ -118,6 +123,7 @@ def preprocess_dataset():
   st.session_state.X_y_train = [X_train.to_numpy(), y_train.to_numpy().reshape(-1, 1)]
   X_test, y_test = test_set.drop(columns=[target_col]), test_set[target_col]
   st.session_state.X_y_test = [X_test.to_numpy(), y_test.to_numpy().reshape(-1, 1)]
+  add_input_layer(X_train.shape[1])
 
   st.toast("Preprocessing Applied.", icon=":material/check_circle:")
 
@@ -198,6 +204,7 @@ elif dataset_option == "AND Gate (Built-in)":
     st.session_state.trainer = Trainer(st.session_state.model)
     st.session_state.model_compiled = False
     st.session_state.activations = []
+    add_input_layer(X_train.shape[1])
     st.session_state.history = None
     st.session_state.test_results = None
 
@@ -217,13 +224,16 @@ for title, dataset_part in [("Training Set", st.session_state.train_set), ("Test
 
 # MODEL
 st.header("Model")
-st.subheader("Add Layers")
+st.subheader("Add Hidden / Output Layers")
 
 def add_layer_callback():
     n_neurons = st.session_state.form_neurons
     activation = st.session_state.form_activation
     st.session_state.model.add_layer(Layer(n_neurons, activation_functions[activation][0], activation_functions[activation][1]))
     st.session_state.activations.append(activation)
+
+if st.session_state.model.layers:
+    st.caption(f"Input layer (locked): {st.session_state.model.layers[0].n_neurons} neurons (one per feature), activation None.")
 
 with st.form("add_layers_form"):
     col1, col2, col3 = st.columns(3)
@@ -258,12 +268,15 @@ else:
     row[0].write(i+1)
     row[1].write(l.n_neurons)
     row[2].write(st.session_state.activations[i])
-    row[3].button("", icon=":material/delete:", key=f"delete_layer_{i}", help=f"Delete layer {i+1}",
-                  on_click=delete_layer_callback, args=(i,))
+    if i == 0:
+      row[3].caption(":material/lock:", help="Input layer is locked")
+    else:
+      row[3].button("", icon=":material/delete:", key=f"delete_layer_{i}", help=f"Delete layer {i+1}",
+                    on_click=delete_layer_callback, args=(i,))
 
 if st.button("Compile Model"):
   if len(st.session_state.model.layers) < 2:
-    st.error("Please add at least two layers (an input layer and an output layer) before compiling.")
+    st.error("Please add at least an output layer before compiling.")
   else:
     st.session_state.model.compile()
     st.session_state.model_compiled = True
