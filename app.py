@@ -45,8 +45,17 @@ if 'history' not in st.session_state:
 if 'test_results' not in st.session_state:
   st.session_state.test_results = None
 
+if 'reset_count' not in st.session_state:
+  st.session_state.reset_count = 0
+
+def wk(name):
+  # widget keys carry the reset counter: new keys make the browser discard old widget values (uploaded file, selections)
+  return f"{name}_{st.session_state.reset_count}"
+
 def reset_session():
+  count = st.session_state.reset_count + 1
   st.session_state.clear()
+  st.session_state.reset_count = count
 
 st.button("Reset Current Session", type="primary", on_click=reset_session)
 
@@ -72,8 +81,8 @@ def add_input_layer(n_features):
   st.session_state.activations = ["None"]
 
 def clean_data():
-  if st.session_state.form_drop_columns:
-    st.session_state.uploaded_dataset.drop(columns=st.session_state.form_drop_columns, inplace=True)
+  if st.session_state[wk("form_drop_columns")]:
+    st.session_state.uploaded_dataset.drop(columns=st.session_state[wk("form_drop_columns")], inplace=True)
   st.toast("Changes Applied.", icon=":material/check_circle:")
 
 def preprocess_dataset():
@@ -81,13 +90,13 @@ def preprocess_dataset():
   raw_data = raw_data.dropna(ignore_index=True)  # drop NA rows
   
   # copy into permanent session state, not just for the form. Needed?
-  target_col = st.session_state.form_target_column
-  target_type = st.session_state.form_target_type
+  target_col = st.session_state[wk("form_target_column")]
+  target_type = st.session_state[wk("form_target_type")]
   st.session_state.target_type = target_type
   st.session_state.target_name = target_col
 
-  if st.session_state.form_one_hot_columns:
-    raw_data = pd.get_dummies(raw_data, columns=st.session_state.form_one_hot_columns, drop_first=True, dtype=int)
+  if st.session_state[wk("form_one_hot_columns")]:
+    raw_data = pd.get_dummies(raw_data, columns=st.session_state[wk("form_one_hot_columns")], drop_first=True, dtype=int)
 
   if target_type == "classification":
     value_counts_old = raw_data[target_col].value_counts()
@@ -104,11 +113,11 @@ def preprocess_dataset():
     st.session_state.model = Model(MSE(), 1)
     st.session_state.trainer = RegressionTrainer(st.session_state.model)
   
-  if st.session_state.form_standardize_columns:
-    X_means, X_stds = standardize_data(train_set, st.session_state.form_standardize_columns)
-    standardize_data(test_set, st.session_state.form_standardize_columns, from_means=X_means, from_stds=X_stds)
+  if st.session_state[wk("form_standardize_columns")]:
+    X_means, X_stds = standardize_data(train_set, st.session_state[wk("form_standardize_columns")])
+    standardize_data(test_set, st.session_state[wk("form_standardize_columns")], from_means=X_means, from_stds=X_stds)
 
-  if target_type == "regression" and target_col not in (st.session_state.form_standardize_columns or []):
+  if target_type == "regression" and target_col not in (st.session_state[wk("form_standardize_columns")] or []):
     # a large-valued target makes the loss enormous and stalls learning, so always scale it (R2 is unaffected)
     y_means, y_stds = standardize_data(train_set, [target_col])
     standardize_data(test_set, [target_col], from_means=y_means, from_stds=y_stds)
@@ -128,14 +137,15 @@ def preprocess_dataset():
   st.toast("Preprocessing Applied.", icon=":material/check_circle:")
 
 def adjust_dataset():
-  if st.session_state.form_number_rows < len(st.session_state.uploaded_dataset):  # updated length after initial downsampling
+  n_rows = st.session_state[wk("form_number_rows")]
+  if n_rows < len(st.session_state.uploaded_dataset):  # updated length after initial downsampling
     if st.session_state.target_type == "classification":
-      equalize_classes(st.session_state.uploaded_dataset, st.session_state.target_name, st.session_state.form_number_rows)
+      equalize_classes(st.session_state.uploaded_dataset, st.session_state.target_name, n_rows)
     else:
-      st.session_state.uploaded_dataset = st.session_state.uploaded_dataset.sample(n=st.session_state.form_number_rows, random_state=42).reset_index(drop=True)
+      st.session_state.uploaded_dataset = st.session_state.uploaded_dataset.sample(n=n_rows, random_state=42).reset_index(drop=True)
 
 st.header("Dataset")
-dataset_option = st.selectbox("Select Dataset", ["AND Gate (Built-in)", "Upload a Dataset"])
+dataset_option = st.selectbox("Select Dataset", ["AND Gate (Built-in)", "Upload a Dataset"], key=wk("dataset_option"))
 
 def clear_dataset_state():
   for key in ("uploaded_dataset", "target_type", "target_name", "model", "train_set", "test_set",
@@ -146,13 +156,13 @@ def clear_dataset_state():
   st.session_state.X_y_test = []
   st.session_state.activations = []
   for key in ("form_drop_columns", "form_one_hot_columns", "form_standardize_columns"):
-    st.session_state.pop(key, None)
+    st.session_state.pop(wk(key), None)
 
 if dataset_option == "Upload a Dataset":
   if st.session_state.get("dataset_source") != "upload":
     clear_dataset_state()  # leaving the AND gate: start with a clear screen
     st.session_state.dataset_source = "upload"
-  uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
+  uploaded_file = st.file_uploader("Choose a CSV file", type="csv", key=wk("uploader"))
   if uploaded_file is None:
     if st.session_state.get("uploaded_file_id") is not None:
       clear_dataset_state()  # file was removed
@@ -169,20 +179,20 @@ if dataset_option == "Upload a Dataset":
     st.subheader("Preprocess Dataset")
 
     with st.form("data_cleaning_form"):
-      st.multiselect("Select columns to drop", dataset.columns, key="form_drop_columns")
+      st.multiselect("Select columns to drop", dataset.columns, key=wk("form_drop_columns"))
       st.form_submit_button("Apply", on_click=clean_data)
 
     with st.form("preprocess_form"):  # separate re-runs based UI from logic
       st.markdown("For binary classification, the classes will be :color[equalized]{background='blue'} automatically.")
-      st.selectbox("Select the target column", dataset.columns, key="form_target_column")
-      st.selectbox("Select the target type", ["regression", "classification"], key="form_target_type")
-      st.multiselect("Select columns to one-hot encode", dataset.columns, key="form_one_hot_columns")
-      st.multiselect("Select columns to standardize", dataset.columns, key="form_standardize_columns")
+      st.selectbox("Select the target column", dataset.columns, key=wk("form_target_column"))
+      st.selectbox("Select the target type", ["regression", "classification"], key=wk("form_target_type"))
+      st.multiselect("Select columns to one-hot encode", dataset.columns, key=wk("form_one_hot_columns"))
+      st.multiselect("Select columns to standardize", dataset.columns, key=wk("form_standardize_columns"))
       st.form_submit_button("Apply Preprocessing", on_click=preprocess_dataset)
     
     with st.form("additional_steps_form"):
       st.markdown(f"Current total size of dataset: :color[{len(dataset):,} rows]{{background='green'}}.")
-      st.number_input("Adjust size of dataset (rows)", min_value=10, max_value=len(dataset), value=len(dataset), step=100, key="form_number_rows")
+      st.number_input("Adjust size of dataset (rows)", min_value=10, max_value=len(dataset), value=len(dataset), step=100, key=wk("form_number_rows"))
       st.form_submit_button("Adjust Dataset", on_click=adjust_dataset)
 
 elif dataset_option == "AND Gate (Built-in)":
@@ -227,8 +237,8 @@ st.header("Model")
 st.subheader("Add Hidden / Output Layers")
 
 def add_layer_callback():
-    n_neurons = st.session_state.form_neurons
-    activation = st.session_state.form_activation
+    n_neurons = st.session_state[wk("form_neurons")]
+    activation = st.session_state[wk("form_activation")]
     st.session_state.model.add_layer(Layer(n_neurons, activation_functions[activation][0], activation_functions[activation][1]))
     st.session_state.activations.append(activation)
 
@@ -238,9 +248,9 @@ if st.session_state.model.layers:
 with st.form("add_layers_form"):
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.number_input("Number of Neurons", min_value=1, max_value=20, value=1, step=1, key="form_neurons")
+        st.number_input("Number of Neurons", min_value=1, max_value=20, value=1, step=1, key=wk("form_neurons"))
     with col2:
-        st.selectbox("Activation Function", list(activation_functions.keys()), key="form_activation")
+        st.selectbox("Activation Function", list(activation_functions.keys()), key=wk("form_activation"))
     with col3:
         st.form_submit_button("Add Layer", on_click=add_layer_callback)
 
@@ -282,7 +292,7 @@ if st.button("Compile Model"):
     st.session_state.model_compiled = True
     st.success("Model compiled!")
 
-if st.checkbox("Show Weights and Biases") and st.session_state.model_compiled:
+if st.checkbox("Show Weights and Biases", key=wk("show_weights")) and st.session_state.model_compiled:
   st.subheader("Weights and Biases")
   for i, layer in enumerate(st.session_state.model.layers):
         st.write(f"Layer {i+1} Biases:", layer.b_.T)
@@ -364,10 +374,10 @@ def plot_loss_landscape(_data, history_key, _trainer, X_train, y_train, model_ca
 st.header("Training")
 # input fields for training
 with st.form("training_form"):
-  batch_size = st.number_input("Batch Size (1 - 32)", min_value=1, max_value=32, value=1, step=1)
-  learning_rate = st.number_input("Learning Rate (0.001 - 1.0)", min_value=0.001, max_value=1.0, value=0.02, step=0.001, format="%.3f")
-  epochs = st.number_input("Epochs (1 - 500)", min_value=1, max_value=500, value=25, step=1)
-  optimizer = st.selectbox("Optimizer", optimizers.keys())
+  batch_size = st.number_input("Batch Size (1 - 32)", min_value=1, max_value=32,   value=1, step=1, key=wk("batch_size"))
+  learning_rate = st.number_input("Learning Rate (0.001 - 1.0)", min_value=0.001, max_value=1.0, value=0.02, step=0.001, format="%.3f", key=wk("learning_rate"))
+  epochs = st.number_input("Epochs (1 - 500)", min_value=1, max_value=500, value=25, step=1, key=wk("epochs"))
+  optimizer = st.selectbox("Optimizer", optimizers.keys(), key=wk("optimizer"))
   submitted = st.form_submit_button("Train Model")
 
 if submitted:
