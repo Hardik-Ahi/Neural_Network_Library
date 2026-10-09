@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import io
+import matplotlib.pyplot as plt
 
 from nn.trainer import Trainer, RegressionTrainer, Logger
 from nn.optimizers import SGD, Momentum, RMSProp
@@ -36,16 +37,15 @@ if 'X_y_test' not in st.session_state:
   st.session_state.X_y_test = []
 if 'activations' not in st.session_state:
   st.session_state.activations = []
-if 'plotter' not in st.session_state:
-  st.session_state.plotter = Plotter()
 if 'data' not in st.session_state:
   st.session_state.data = None
 if 'history' not in st.session_state:
   st.session_state.history = None
 
-if st.button("Reset Current Session", type="primary"):
-  for key in st.session_state.keys():
-    del st.session_state[key]
+def reset_session():
+  st.session_state.clear()
+
+st.button("Reset Current Session", type="primary", on_click=reset_session)
 
 activation_functions = {
     "None": [None, None],
@@ -220,76 +220,72 @@ if st.checkbox("Show Weights and Biases") and st.session_state.model_compiled:
       st.write(f"Layer {i+1} to {i+2} Weights:", weight.matrix)
 
 # PREP PLOTTING
-plotter = st.session_state.plotter
+
+def figure_to_png(figure):
+  try:
+    buffer = io.BytesIO()
+    figure.savefig(buffer, format="png", bbox_inches="tight")
+    return buffer.getvalue()
+  finally:
+    plt.close(figure)
+
+def trainer_cache_key(trainer):
+  model = trainer.model
+  activations = tuple(
+    (
+      layer.n_neurons,
+      getattr(layer.activation, "__module__", None),
+      getattr(layer.activation, "__qualname__", None)
+    )
+    for layer in model.layers
+  )
+  loss = model.loss
+  loss_type = loss if isinstance(loss, type) else type(loss)
+  loss_key = (loss_type.__module__, loss_type.__qualname__)
+  weights = tuple(np.asarray(model.weights_elements()).ravel().tolist())
+  trainer_type = type(trainer)
+  return (trainer_type.__module__, trainer_type.__qualname__), activations, loss_key, weights
 
 @st.cache_data
 def load_history(string):  # returns JSON (Python) object from string - serializable
   return Logger.load_data(string)
 
 @st.cache_data
-def plot_gradients(string):
-  gradients = plotter.plot_gradients(st.session_state.data, n_points=700)
-  buf = io.BytesIO()
-  gradients.savefig(buf, format="png", bbox_inches="tight")
-  buf.seek(0)
-  image_bytes = buf.getvalue()
-  return image_bytes
+def plot_gradients(data):
+  gradients = Plotter().plot_gradients(data, n_points=700)
+  return figure_to_png(gradients)
 
 @st.cache_data
-def plot_weights(string):
-  weights = plotter.plot_weights(st.session_state.data, n_points=700)
-  buf = io.BytesIO()
-  weights.savefig(buf, format="png", bbox_inches="tight")
-  buf.seek(0)
-  image_bytes = buf.getvalue()
-  return image_bytes
+def plot_weights(data):
+  weights = Plotter().plot_weights(data, n_points=700)
+  return figure_to_png(weights)
 
 @st.cache_data
-def plot_score(string):
-  score = plotter.plot_score(st.session_state.data, n_points=700, confusion_matrix=(st.session_state.target_type == "classification"))
-  buf = io.BytesIO()
-  score.savefig(buf, format="png", bbox_inches="tight")
-  buf.seek(0)
-  image_bytes = buf.getvalue()
-  return image_bytes
+def plot_score(data, is_classification):
+  score = Plotter().plot_score(data, n_points=700, confusion_matrix=is_classification)
+  return figure_to_png(score)
 
 @st.cache_data
-def plot_and_gate_predictions(string, _X_train):  # _ underscore means skip hashing on this key
-  predictions = plotter.plot_predictions(st.session_state.data, _X_train)
-  buf = io.BytesIO()
-  predictions.savefig(buf, format="png", bbox_inches="tight")
-  buf.seek(0)
-  image_bytes = buf.getvalue()
-  return image_bytes
+def plot_and_gate_predictions(data, X_train):
+  predictions = Plotter().plot_predictions(data, X_train)
+  return figure_to_png(predictions)
 
 @st.cache_data
-def plot_regression(string):
-  axis = pca(st.session_state.X_y_train[0], n_components=1)
-  regression = plotter.plot_regression(st.session_state.data, axis, st.session_state.X_y_train[1])
-  buf = io.BytesIO()
-  regression.savefig(buf, format="png", bbox_inches="tight")
-  buf.seek(0)
-  image_bytes = buf.getvalue()
-  return image_bytes
+def plot_regression(data, X_train, y_train):
+  axis = pca(X_train, n_components=1)
+  regression = Plotter().plot_regression(data, axis, y_train)
+  return figure_to_png(regression)
 
 @st.cache_data
-def plot_classification(string):
-  axis = pca(st.session_state.X_y_train[0], n_components=2)
-  classification = plotter.plot_classification(st.session_state.data, axis[:, 0], axis[:, 1], st.session_state.X_y_train[1])
-  buf = io.BytesIO()
-  classification.savefig(buf, format="png", bbox_inches="tight")
-  buf.seek(0)
-  image_bytes = buf.getvalue()
-  return image_bytes
+def plot_classification(data, X_train, y_train):
+  axis = pca(X_train, n_components=2)
+  classification = Plotter().plot_classification(data, axis[:, 0], axis[:, 1], y_train)
+  return figure_to_png(classification)
 
 @st.cache_data
-def plot_loss_landscape(string, _trainer, _X_train, _y_train):
-  contours = plotter.plot_contours(st.session_state.data, _trainer, _X_train, _y_train)
-  buf = io.BytesIO()
-  contours.savefig(buf, format="png", bbox_inches="tight")
-  buf.seek(0)
-  image_bytes = buf.getvalue()
-  return image_bytes
+def plot_loss_landscape(data, _trainer, X_train, y_train, model_cache_key):
+  contours = Plotter().plot_contours(data, _trainer, X_train, y_train)
+  return figure_to_png(contours)
 
 # TRAIN
 
@@ -309,7 +305,7 @@ if submitted:
     with st.spinner("Training in progress..."):
       st.session_state.trainer.set_optimizer(optimizers[optimizer]())
       X_train, y_train = st.session_state.X_y_train
-      st.session_state.trainer.train(X_train, y_train, batch_size, learning_rate, epochs = epochs)
+      st.session_state.trainer.train(X_train, y_train, batch_size, learning_rate, epochs = epochs, verbose = False)
       st.session_state.history = st.session_state.trainer.save_history()
     st.success("Training completed!")
 
@@ -324,34 +320,36 @@ if st.button("Plot History"):
   X_train, y_train = st.session_state.X_y_train
 
   with st.spinner("Reading training history..."):
-    st.session_state.data = load_history(st.session_state.history)
+    data = load_history(st.session_state.history)
+    st.session_state.data = data
 
   with st.spinner("Plotting gradients..."):
-    gradient_path = plot_gradients(st.session_state.history)
+    gradient_path = plot_gradients(data)
     st.subheader("Gradients")
     st.image(gradient_path, width='stretch')
 
   with st.spinner("Plotting weights..."):
-    weight_path = plot_weights(st.session_state.history)
+    weight_path = plot_weights(data)
     st.subheader("Weights")
     st.image(weight_path, width='stretch')
 
   with st.spinner("Plotting accuracy..."):
-    score_path = plot_score(st.session_state.history)
+    score_path = plot_score(data, st.session_state.target_type == "classification")
     st.subheader("Accuracy")
     st.image(score_path, width='stretch')
 
   with st.spinner("Plotting outputs..."):
     if st.session_state.target_type == 'regression':
-      predictions = plot_regression(st.session_state.history)
+      predictions = plot_regression(data, X_train, y_train)
     elif st.session_state.target_type == 'classification':
       #predictions = plot_and_gate_predictions(st.session_state.history, X_train)
-      predictions = plot_classification(st.session_state.history)
+      predictions = plot_classification(data, X_train, y_train)
     st.subheader("Predictions")
     st.image(predictions, width='stretch')
 
   with st.spinner("Plotting loss landscape (this takes a while)..."):
-    loss_landscape_path = plot_loss_landscape(st.session_state.history, st.session_state.trainer, X_train, y_train)
+    model_key = trainer_cache_key(st.session_state.trainer)
+    loss_landscape_path = plot_loss_landscape(data, st.session_state.trainer, X_train, y_train, model_key)
     st.subheader("Loss Landscape")
     st.image(loss_landscape_path, width='stretch')
 

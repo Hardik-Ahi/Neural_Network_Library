@@ -1,19 +1,23 @@
-n_weights
+Training history (version 2) -- JSON object, position-indexed, only the first 4 elements of each tracked array are stored.
+Indices ("0", "2", ...) are JSON string keys. tracked_* lists hold the first and last weight matrix / layer bias.
+
+version: 2
+n_epochs
+tracked_weights: [first, last]    // weight matrix indices
+tracked_biases: [first, last]     // layer indices (1-based; bias of layer n)
 
 init:
-    weights-n
-    bias-n
+    weights: {index: [first 4 elements]}
+    bias: {index: [first 4 elements]}
 
-n-epochs
+updates:                           // one entry per update (batch), across ALL logged epochs, in order
+    weights_gradient: {index: [[4 elements], ...]}   // gradient that will be applied (given by optimizer)
+    bias_gradient: {index: [[4 elements], ...]}
+    weights: {index: [[4 elements], ...]}            // after the update
+    bias: {index: [[4 elements], ...]}
 
-epoch-n:
-    n-updates
-    update-n:
-        weights-gradient-n  // gradient that will be applied (given by optimizer)
-        bias-gradient-n
-        weights-n  // updated
-        bias-n
-    accuracy
-    loss
-    confusion-matrix
-    predictions
+epochs:                            // one entry per logged epoch, position = epoch number
+    score: []                      // accuracy (classification) or R^2 (regression)
+    loss: []
+    confusion_matrix: {tp: [], tn: [], fp: [], fn: []}   // classification only (empty lists otherwise)
+    predictions: [[...first 200 predictions], ...]

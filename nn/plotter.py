@@ -1,8 +1,6 @@
 import numpy as np
 from numpy.random import default_rng
 import matplotlib.pyplot as plt
-from nn.trainer import Logger
-import os, time
 
 class Plotter:
     @staticmethod
@@ -19,162 +17,72 @@ class Plotter:
             return array
         array = np.vstack((array[:first], array[first::2]))
         return array
-    
+
+    @staticmethod
+    def _matrix_columns(series):
+        # series: (T, K) first K elements of a weight matrix; laid out as 2 x (K/2) (or a single element)
+        if series.shape[1] > 1:
+            series = series.reshape((series.shape[0], 2, -1))
+            return [(f'{r*2 + c}', series[:, r, c]) for r in range(series.shape[1]) for c in range(series.shape[2])]
+        return [('0', series[:, 0])]
+
+    @staticmethod
+    def _bias_columns(series):
+        return [(f'{r}', series[:, r]) for r in range(series.shape[1])]
+
+    def _plot_tracked(self, data, title, weights_series, bias_series, n_points):
+        # weights_series / bias_series: dict[str index] -> (T, K) array
+        tracked_weights = data['tracked_weights']
+        tracked_biases = data['tracked_biases']
+        n_cols = len(tracked_weights)
+
+        fig, axs = plt.subplots(2, n_cols, figsize = (7 * n_cols, 8), gridspec_kw = {'wspace': 0.2, 'hspace': 0.3}, squeeze = False)
+        fig.suptitle(title, size = 'xx-large')
+
+        for ax, index in enumerate(tracked_weights):
+            axis = axs[0, ax]
+            for label, column in self._matrix_columns(weights_series[str(index)][:n_points]):
+                axis.plot(column, label = label, linewidth = 0.7)
+            axis.legend(title = 'elements')
+            axis.set_title(f"weights-{index}")
+            axis.set_xlabel("Updates")
+
+        for ax, index in enumerate(tracked_biases):
+            axis = axs[1, ax]
+            for label, column in self._bias_columns(bias_series[str(index)][:n_points]):
+                axis.plot(column, label = label, linewidth = 0.7)
+            axis.legend(title = 'elements')
+            axis.set_title(f"bias-{index}")
+            axis.set_xlabel("Updates")
+
+        return fig
+
     def plot_gradients(self, data, n_points = None):
-        weights_gradients = dict()
-        bias_gradients = dict()
+        updates = data['updates']
+        weights = {k: np.asarray(v) for k, v in updates['weights_gradient'].items()}
+        bias = {k: np.asarray(v) for k, v in updates['bias_gradient'].items()}
+        return self._plot_tracked(data, 'Gradients', weights, bias, n_points)
 
-        for i in range(data['n-epochs']):
-            epoch = f'epoch-{i}'
-            for j in range(data[epoch]['n-updates']):
-                update = f'update-{j}'
-                for w in data['n_weights']:
-                    weight = f'weights-gradient-{w}'
-                    if weight not in weights_gradients:
-                        weights_gradients[weight] = list()
-                    array = np.asarray(data[epoch][update][weight]).ravel()[:4]
-                    if array.shape[0] > 1:
-                        array = array.reshape((2, -1))
-                    else:
-                        array = array.reshape((1, 1))
-                    weights_gradients[weight].append(array)
-                for b in data['n_weights']:
-                    b += 1
-                    bias = f'bias-gradient-{b}'
-                    if bias not in bias_gradients:
-                        bias_gradients[bias] = list()
-                    array = np.asarray(data[epoch][update][bias]).ravel()[:4]
-                    array = array.reshape((-1, 1))
-                    bias_gradients[bias].append(array)
-        
-        fig, axs = plt.subplots(2, len(data['n_weights']), figsize = (7 * len(data['n_weights']), 8), gridspec_kw = {'wspace': 0.2, 'hspace': 0.3}, squeeze = False)
-        fig.suptitle(f'Gradients', size = 'xx-large')
-
-        # weights
-        for ax in range(len(data['n_weights'])):
-            weight = f"weights-gradient-{data['n_weights'][ax]}"
-            weights_gradients[weight] = np.asarray(weights_gradients[weight])  # convert entire history of gradients into one numpy array
-            if n_points is not None:
-                weights_gradients[weight] = weights_gradients[weight][:n_points]
-            for r in range(weights_gradients[weight][0].shape[0]):
-                for c in range(weights_gradients[weight][0].shape[1]):
-                    axs[0, ax].plot(weights_gradients[weight][:, r, c], label = f'{r*2 + c}', linewidth = 0.7)
-                    axs[0, ax].legend(title = 'elements')
-                    axs[0, ax].set_title(f"weights-{data['n_weights'][ax]}")
-                    axs[0, ax].set_xlabel("Updates")
-        
-        # bias
-        for ax in range(len(data['n_weights'])):
-            bias = f"bias-gradient-{data['n_weights'][ax] + 1}"
-            bias_gradients[bias] = np.asarray(bias_gradients[bias])
-            if n_points is not None:
-                bias_gradients[bias] = bias_gradients[bias][:n_points]
-            for r in range(bias_gradients[bias][0].shape[0]):
-                    axs[1, ax].plot(bias_gradients[bias][:, r, 0], label = f'{r}', linewidth = 0.7)
-                    axs[1, ax].legend(title = 'elements')
-                    axs[1, ax].set_title(f"bias-{data['n_weights'][ax] + 1}")
-                    axs[1, ax].set_xlabel("Updates")
-        
-        return fig
-    
     def plot_weights(self, data, n_points = None):
-        weights = dict()
-        bias = dict()
-
         init = data['init']
-        for i in data['n_weights']:
-            weight = f'weights-{i}'
-            if weight not in weights:
-                weights[weight] = list()
-            array = np.asarray(init['weights'][weight]).ravel()[:4]
-            if array.shape[0] > 1:
-                array = array.reshape((2, -1))
-            else:
-                array = array.reshape((1, 1))
-            weights[weight].append(array)
-        for i in data['n_weights']:
-            bias_name = f'bias-{i+1}'
-            if bias_name not in bias:
-                bias[bias_name] = list()
-            array = np.asarray(init['bias'][bias_name]).ravel()[:4]
-            array = array.reshape((-1, 1))
-            bias[bias_name].append(array)
+        updates = data['updates']
+        # initial values are the first point of each series
+        weights = {k: np.vstack((np.asarray(init['weights'][k])[None, :], np.asarray(v))) for k, v in updates['weights'].items()}
+        bias = {k: np.vstack((np.asarray(init['bias'][k])[None, :], np.asarray(v))) for k, v in updates['bias'].items()}
+        return self._plot_tracked(data, "Weights & Bias Values", weights, bias, n_points)
 
-        for i in range(data['n-epochs']):
-            epoch = f'epoch-{i}'
-            for j in range(data[epoch]['n-updates']):
-                update = f'update-{j}'
-                for w in data['n_weights']:
-                    weight = f'weights-{w}'
-                    array = np.asarray(data[epoch][update][weight]).ravel()[:4]
-                    if array.shape[0] > 1:
-                        array = array.reshape((2, -1))
-                    else:
-                        array = array.reshape((1, 1))
-                    weights[weight].append(array)
-                for b in data['n_weights']:
-                    bias_name = f'bias-{b+1}'
-                    array = np.asarray(data[epoch][update][bias_name]).ravel()[:4]
-                    array = array.reshape((-1, 1))
-                    bias[bias_name].append(array)
-        
-        fig, axs = plt.subplots(2, len(data['n_weights']), figsize = (7 * len(data['n_weights']), 8), gridspec_kw = {'wspace': 0.2, 'hspace': 0.3}, squeeze = False)
-        fig.suptitle("Weights & Bias Values", size = 'xx-large')
-        # weights
-        for ax in range(len(data['n_weights'])):
-            weight = f"weights-{data['n_weights'][ax]}"
-            weights[weight] = np.asarray(weights[weight])
-            if n_points is not None:
-                weights[weight] = weights[weight][:n_points]
-            for r in range(weights[weight][0].shape[0]):
-                for c in range(weights[weight][0].shape[1]):
-                    axs[0, ax].plot(weights[weight][:, r, c], label = f'{r*2 + c}', linewidth = 0.7)
-                    axs[0, ax].legend(title = 'elements')
-                    axs[0, ax].set_title(f"weights-{data['n_weights'][ax]}")
-                    axs[0, ax].set_xlabel("Updates")
-        
-        # bias
-        for ax in range(len(data['n_weights'])):
-            bias_name = f"bias-{data['n_weights'][ax] + 1}"
-            bias[bias_name] = np.asarray(bias[bias_name])
-            if n_points is not None:
-                bias[bias_name] = bias[bias_name][:n_points]
-            for r in range(bias[bias_name][0].shape[0]):
-                    axs[1, ax].plot(bias[bias_name][:, r, 0], label = f'{r}', linewidth = 0.7)
-                    axs[1, ax].legend(title = 'elements')
-                    axs[1, ax].set_title(f"bias-{data['n_weights'][ax] + 1}")
-                    axs[1, ax].set_xlabel("Updates")
-        
-        return fig
-    
     def plot_score(self, data, n_points = None, confusion_matrix = True):
-        score_list = list()
-        loss_list = list()
-
-        for i in range(data['n-epochs']):
-            epoch = f'epoch-{i}'
-            score_list.append(data[epoch]['score'])
-            loss_list.append(data[epoch]['loss'])
-
-        if confusion_matrix:
-            confusion_matrix = {'tp': list(), 'tn': list(), 'fp': list(), 'fn': list()}
-            for i in range(data['n-epochs']):
-                matrix = data[f'epoch-{i}']['confusion-matrix']
-                for key in matrix.keys():
-                    confusion_matrix[key].append(matrix[key])
+        epochs = data['epochs']
+        loss_list = np.asarray(epochs['loss'])[:n_points]
+        score_list = np.asarray(epochs['score'])[:n_points]
 
         if confusion_matrix:
             fig, axs = plt.subplots(1, 2, figsize = (15, 5), gridspec_kw = {'wspace': 0.2, 'hspace': 0.3})
         else:
             fig, axs = plt.subplots(figsize = (8, 6))
             axs = np.array([axs])
-        fig.suptitle(f"Metrics", size = 'xx-large')
+        fig.suptitle("Metrics", size = 'xx-large')
 
-        loss_list = np.asarray(loss_list)
-        score_list = np.asarray(score_list)
-        if n_points is not None:
-                loss_list = loss_list[:n_points]
-                score_list = score_list[:n_points]
         axs[0].plot(loss_list, label = "Loss")
         axs[0].plot(score_list, label = "Score")
         axs[0].set_xlabel("Epochs")
@@ -182,31 +90,32 @@ class Plotter:
         axs[0].legend()
 
         if confusion_matrix:
-            for key in confusion_matrix.keys():
-                confusion_matrix[key] = np.asarray(confusion_matrix[key])
-                if n_points is not None:
-                    confusion_matrix[key] = confusion_matrix[key][:n_points]
-                axs[1].plot(confusion_matrix[key], label = key)
+            for key, values in epochs['confusion_matrix'].items():
+                axs[1].plot(np.asarray(values)[:n_points], label = key)
             axs[1].set_xlabel("Epochs")
             axs[1].set_title("Confusion Matrix")
             axs[1].legend()
 
         return fig
-    
+
     @staticmethod
     def plot_points(x, y):
         fig, ax = plt.subplots(figsize = (7, 5))
-        fig.suptitle(f"Points", size = 'xx-large')
+        fig.suptitle("Points", size = 'xx-large')
 
         ax.scatter(x, y)
         ax.set_xlabel("X")
         ax.set_ylabel("Y")
 
         return fig
-        
+
+    @staticmethod
+    def _sample_epochs(data):
+        return np.linspace(0, data['n_epochs']-1, 4, dtype = int)
+
     def plot_predictions(self, data, features, predictions = None):
         if predictions is not None:
-            fig, axs = plt.subplots(figsize = (6, 4))
+            fig, axis = plt.subplots(figsize = (6, 4))
             fig.suptitle("Predictions", size = "xx-large")
 
             zeros = (predictions == 0)  # use this boolean array to index features
@@ -220,48 +129,43 @@ class Plotter:
         fig, axs = plt.subplots(2, 2, figsize = (12, 8), gridspec_kw = {'wspace': 0.2, 'hspace': 0.3})
         fig.suptitle("Predictions", size = "xx-large")
 
-        epochs = np.linspace(0, data['n-epochs']-1, 4, dtype = int)
-        for i in range(epochs.shape[0]):
+        for i, epoch in enumerate(self._sample_epochs(data)):
             axis = axs[i//2][i%2]
-            epoch = f'epoch-{epochs[i]}'
-            predictions = np.asarray(data[epoch]['predictions'], dtype = int)
-            zeros = (predictions == 0)  # use this boolean array to index features
+            predictions = np.asarray(data['epochs']['predictions'][epoch], dtype = int)
+            zeros = (predictions == 0)
             ones = (predictions == 1)
-            features = features[:predictions.shape[0]]
-            axis.scatter(features[zeros, 0], features[zeros, 1], c = "red", label = "0")
-            axis.scatter(features[ones, 0], features[ones, 1], c = "blue", label = "1")
-            axis.set_title(f'Epoch-{epochs[i]}')
+            subset = features[:predictions.shape[0]]
+            axis.scatter(subset[zeros, 0], subset[zeros, 1], c = "red", label = "0")
+            axis.scatter(subset[ones, 0], subset[ones, 1], c = "blue", label = "1")
+            axis.set_title(f'Epoch-{epoch}')
             axis.legend()
 
         return fig
-    
+
     def plot_classification(self, data, x_axis, y_axis, targets):
         fig, axs = plt.subplots(2, 2, figsize = (12, 8), gridspec_kw = {'wspace': 0.2, 'hspace': 0.3})
         fig.suptitle("Classification: First 200 samples", size = "x-large")
 
-        epochs = np.linspace(0, data['n-epochs']-1, 4, dtype = int)
-        for i in range(epochs.shape[0]):
+        for i, epoch in enumerate(self._sample_epochs(data)):
             axis = axs[i//2][i%2]
-            epoch = f'epoch-{epochs[i]}'
 
-            predictions = np.asarray(data[epoch]['predictions'], dtype = int)
+            predictions = np.asarray(data['epochs']['predictions'][epoch], dtype = int)
             shorter = min(predictions.shape[0], x_axis.shape[0])
             predictions = predictions[:shorter]
-            x_axis = x_axis[:shorter]
-            y_axis = y_axis[:shorter]
-            targets = targets[:shorter]
-            targets = targets.reshape(predictions.shape)
+            x = x_axis[:shorter]
+            y = y_axis[:shorter]
+            labels = targets[:shorter].reshape(predictions.shape)
 
             zeros = (predictions == 0)  # use this boolean array to index features
             ones = (predictions == 1)
-            incorrect = ((targets == 1) & zeros) | ((targets == 0) & ones)
+            incorrect = ((labels == 1) & zeros) | ((labels == 0) & ones)
 
-            axis.scatter(x_axis[zeros], y_axis[zeros], c = "red", label = "0")
-            axis.scatter(x_axis[ones], y_axis[ones], c = "blue", label = "1")
-            axis.scatter(x_axis[incorrect], y_axis[incorrect], c = "black", label = "incorrect", marker = "x")
+            axis.scatter(x[zeros], y[zeros], c = "red", label = "0")
+            axis.scatter(x[ones], y[ones], c = "blue", label = "1")
+            axis.scatter(x[incorrect], y[incorrect], c = "black", label = "incorrect", marker = "x")
             axis.set_xlabel("PCA Component-1")
             axis.set_ylabel("PCA Component-2")
-            axis.set_title(f'Epoch-{epochs[i]}')
+            axis.set_title(f'Epoch-{epoch}')
             axis.legend()
 
         return fig
@@ -285,25 +189,22 @@ class Plotter:
         fig, axs = plt.subplots(2, 2, figsize = (12, 8), gridspec_kw = {'wspace': 0.2, 'hspace': 0.3})
         fig.suptitle("Predictions", size = "xx-large")
 
-        epochs = np.linspace(0, data['n-epochs']-1, 4, dtype = int)
-
-        for i in range(epochs.shape[0]):
+        for i, epoch in enumerate(self._sample_epochs(data)):
             axis = axs[i//2][i%2]
-            epoch = f'epoch-{epochs[i]}'
-            predictions = np.asarray(data[epoch]['predictions'])
-            features = features[:predictions.shape[0], :]
-            targets = targets[:predictions.shape[0], :]
-            axis.scatter(features[:, 0], targets[:, 0], label = "targets", c = "cornflowerblue")
-            axis.scatter(features[:, 0], predictions, label = "predictions", marker = "x", c = "coral", s = prediction_size)
-            axis.set_title(f'Epoch-{epochs[i]}')
+            predictions = np.asarray(data['epochs']['predictions'][epoch])
+            n = predictions.shape[0]
+            axis.scatter(features[:n, 0], targets[:n, 0], label = "targets", c = "cornflowerblue")
+            axis.scatter(features[:n, 0], predictions, label = "predictions", marker = "x", c = "coral", s = prediction_size)
+            axis.set_title(f'Epoch-{epoch}')
             axis.set_xlabel(x_label)
             axis.legend()
-        
+
         return fig
 
     def plot_contours(self, data, trainer, features, targets, magnitude = 1, seed = 91):
         model = trainer.model
         original_vector = model.weights_elements()
+        norm = np.linalg.norm(original_vector)
 
         seeds = default_rng(seed).choice(1000, (4, 2), replace = False)
         fig, axs = plt.subplots(2, 2, figsize = (12, 8), gridspec_kw = {'wspace': 0.2, 'hspace': 0.3})
@@ -316,27 +217,25 @@ class Plotter:
         features = features[:200, :]
         targets = targets[:200, :]
 
-        for ax in range(4):
-            vector1 = default_rng(seeds[ax][0]).uniform(-1, 1, size = original_vector.shape)
-            vector1 = (vector1 / np.linalg.norm(vector1)) * np.linalg.norm(original_vector)
-            vector2 = default_rng(seeds[ax][1]).uniform(-1, 1, size = original_vector.shape)
-            vector2 = (vector2 / np.linalg.norm(vector2)) * np.linalg.norm(original_vector)
+        try:
+            for ax in range(4):
+                vector1 = default_rng(seeds[ax][0]).uniform(-1, 1, size = original_vector.shape)
+                vector1 = (vector1 / np.linalg.norm(vector1)) * norm
+                vector2 = default_rng(seeds[ax][1]).uniform(-1, 1, size = original_vector.shape)
+                vector2 = (vector2 / np.linalg.norm(vector2)) * norm
 
-            for i in range(y.size):  # y first
-                for j in range(x.size):
-                    model.set_weights(original_vector + y[i] * vector1 + x[j] * vector2)
-                    _, loss, _ = trainer.predict(features, targets, quiet = True)
-                    z[i, j] = loss
-            
-            axis = axs[ax//2][ax%2]
-            # levels = 15 (earlier) --> np.linspace(np.min(z), np.max(z)//4, 10)
-            contour_set = axis.contour(x, y, z, levels = 15, cmap = "magma")
-            axis.clabel(contour_set)
-            axis.set_xlabel("alpha")
-            axis.set_ylabel("beta")
-            axis.scatter(0, 0, c = "blue", label = "model")
-            axis.legend()
-            print(f'Grid-{ax} done')
-        
-        model.set_weights(original_vector)
+                for i in range(y.size):  # y first
+                    for j in range(x.size):
+                        model.set_weights(original_vector + y[i] * vector1 + x[j] * vector2)
+                        z[i, j] = trainer.loss_only(features, targets)
+
+                axis = axs[ax//2][ax%2]
+                contour_set = axis.contour(x, y, z, levels = 15, cmap = "magma")
+                axis.clabel(contour_set)
+                axis.set_xlabel("alpha")
+                axis.set_ylabel("beta")
+                axis.scatter(0, 0, c = "blue", label = "model")
+                axis.legend()
+        finally:
+            model.set_weights(original_vector)
         return fig

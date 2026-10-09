@@ -90,8 +90,8 @@ class RMSProp(Momentum):
         self.model.layers[layer_index].b_ -= (l_rate * self.gradient_biases(layer_index) / np.sqrt(self.biases[layer_index] + self.epsilon))
         return np.sqrt(self.biases[layer_index] + self.epsilon)
 
-# not working as of now
 class Adam(SGD):
+    """EXPERIMENTAL: not working as of now; do not use for training."""
 
     def __init__(self, beta1 = 0.9, beta2 = 0.999, epsilon = 1e-7):
         self.weight_mean = list()

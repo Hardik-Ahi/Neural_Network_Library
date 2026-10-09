@@ -1,48 +1,45 @@
 import numpy as np
 
-@np.vectorize
+# All activations are true array operations (no np.vectorize): faster, and the output dtype is always float
+# (np.vectorize infers dtype from the first element, which silently truncated floats to ints).
+
 def relu(x):
-    return x if x > 0 else 0
+    x = np.asarray(x, dtype=float)
+    return np.where(x > 0, x, 0.0)
 
 def leaky_relu(leak = 0.1, alpha = 1):
-    @np.vectorize
     def func(x):
-        return alpha * x if x > 0 else x*leak  # leak is accessed through a 'closure', func.__name__ works here.
-    func.__name__ = "leaky_relu" 
+        x = np.asarray(x, dtype=float)
+        return np.where(x > 0, alpha * x, x * leak)  # leak is accessed through a 'closure'
+    func.__name__ = "leaky_relu"
     return func
 
 def der_leaky_relu(leak = 0.1, alpha = 1):
-    @np.vectorize
     def func(x):
-        return alpha if x > 0 else leak
+        x = np.asarray(x, dtype=float)
+        return np.where(x > 0, float(alpha), float(leak))
     return func
 
-@np.vectorize
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
-
-@np.vectorize
-def round_off(x):
-    return 1 if x >= 0.5 else 0
-
-@np.vectorize
-def mirror(x):
-    return x
-
-@np.vectorize
-def der_mirror(x):
-    return 1
-
 def sigmoid_func(x):
-    return 1 / (1 + np.exp(-x))
+    return 1 / (1 + np.exp(-np.asarray(x, dtype=float)))
 
-@np.vectorize
+sigmoid = sigmoid_func
+
+def round_off(x):
+    return np.where(np.asarray(x) >= 0.5, 1, 0)
+
+def mirror(x):
+    return np.asarray(x, dtype=float)
+
+def der_mirror(x):
+    return np.ones_like(np.asarray(x, dtype=float))
+
 def der_sigmoid(x):
-    return sigmoid_func(x) * (1 - sigmoid_func(x))
+    s = sigmoid_func(x)
+    return s * (1 - s)
 
-@np.vectorize
 def der_relu(x):
-    return 1 if x > 0 else 0
+    return np.where(np.asarray(x) > 0, 1.0, 0.0)
 
 # same interface as obtained thru np.vectorize
 def softmax(layer):
@@ -68,12 +65,9 @@ class BinaryLoss(MSE):
     def calculate_loss(self, labels, predictions, epsilon = 1e-7):
         total = predictions.size
         labels = labels.reshape(predictions.shape)
-        summation = 0
 
         predictions = np.clip(predictions, epsilon, 1 - epsilon)  # avoiding values of 0 ( => inf loss) and 1 ( => 0 loss)
-        iterator = zip(labels, predictions)
-        for label, prediction in iterator:
-            summation += label * np.log(prediction) + (1 - label) * np.log(1 - prediction)
+        summation = np.sum(labels * np.log(predictions) + (1 - labels) * np.log(1 - predictions))
         return (-1 / total) * summation
 
     def der_loss(self, label, output, epsilon = 1e-7):  # output belongs to range [0, 1]
@@ -85,12 +79,9 @@ class CategoricalLoss(MSE):
     def calculate_loss(self, labels, predictions, epsilon = 1e-9):
         total = predictions.shape[0]
         labels = labels.reshape(predictions.shape)
-        summation = 0
 
         predictions = np.clip(predictions, epsilon, 1 - epsilon)
-        iterator = zip(labels, predictions)
-        for label, prediction in iterator:
-            summation += np.sum(label * np.log(prediction))
+        summation = np.sum(labels * np.log(predictions))
         
         return (-1 / total) * summation
     

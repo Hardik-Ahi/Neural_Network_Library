@@ -25,6 +25,7 @@ class Layer:
         return self.der_activation(self.z_)
 
 class PolyLayer:
+    """EXPERIMENTAL: concatenates several layers; currently unused by the app."""
 
     def __init__(self, *layers):
         self.layers = layers  # list as it is
@@ -154,7 +155,7 @@ class Model:
         np.savez(path, allow_pickle = False, **weights_dict, **bias_dict)
     
     def load_weights(self, path):
-        if not os.path.exists:
+        if not os.path.exists(path):
             print(f'{path} does not exist')
             return
 
