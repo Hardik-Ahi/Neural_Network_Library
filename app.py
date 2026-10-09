@@ -129,6 +129,7 @@ st.header("Dataset")
 dataset_option = st.selectbox("Select Dataset", ["AND Gate (Built-in)", "Upload a Dataset"])
 
 if dataset_option == "Upload a Dataset":
+  st.session_state.dataset_source = "upload"
   uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
   if uploaded_file is not None:
     if st.session_state.uploaded_dataset is None:
@@ -157,20 +158,25 @@ if dataset_option == "Upload a Dataset":
       st.form_submit_button("Adjust Dataset", on_click=adjust_dataset)
 
 elif dataset_option == "AND Gate (Built-in)":
-  X_train, y_train = and_gate_dataset(100, 1)
-  st.session_state.train_set = pd.DataFrame(np.hstack((X_train, y_train)), columns=["Input 1", "Input 2", "Output"])
-  
-  X_test, y_test = and_gate_dataset(50, 2)
-  st.session_state.test_set = pd.DataFrame(np.hstack((X_test, y_test)), columns=["Input 1", "Input 2", "Output"])
-  
-  st.session_state.target_type = "classification"
-  st.session_state.target_name = "Output"
-  
-  st.session_state.X_y_train = [X_train, y_train.reshape(-1, 1)]
-  st.session_state.X_y_test = [X_test, y_test.reshape(-1, 1)]
-  st.session_state.model = Model(BinaryLoss(), 1)
-  st.session_state.trainer = Trainer(st.session_state.model)
-  st.session_state.model_compiled = False
+  # initialise once per selection; re-running on every interaction would discard layers added via the UI
+  if st.session_state.get("dataset_source") != "and_gate":
+    st.session_state.dataset_source = "and_gate"
+    X_train, y_train = and_gate_dataset(100, 1)
+    st.session_state.train_set = pd.DataFrame(np.hstack((X_train, y_train)), columns=["Input 1", "Input 2", "Output"])
+
+    X_test, y_test = and_gate_dataset(50, 2)
+    st.session_state.test_set = pd.DataFrame(np.hstack((X_test, y_test)), columns=["Input 1", "Input 2", "Output"])
+
+    st.session_state.target_type = "classification"
+    st.session_state.target_name = "Output"
+
+    st.session_state.X_y_train = [X_train, y_train.reshape(-1, 1)]
+    st.session_state.X_y_test = [X_test, y_test.reshape(-1, 1)]
+    st.session_state.model = Model(BinaryLoss(), 1)
+    st.session_state.trainer = Trainer(st.session_state.model)
+    st.session_state.model_compiled = False
+    st.session_state.activations = []
+    st.session_state.history = None
 
 # DISPLAY TRAIN, TEST SETS
 if st.session_state.train_set is None:
