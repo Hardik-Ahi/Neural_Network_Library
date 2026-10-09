@@ -42,6 +42,8 @@ if 'data' not in st.session_state:
   st.session_state.data = None
 if 'history' not in st.session_state:
   st.session_state.history = None
+if 'test_results' not in st.session_state:
+  st.session_state.test_results = None
 
 def reset_session():
   st.session_state.clear()
@@ -110,6 +112,7 @@ def preprocess_dataset():
   st.session_state.train_set = train_set
   st.session_state.test_set = test_set
   st.session_state.model_compiled = False
+  st.session_state.test_results = None
 
   X_train, y_train = train_set.drop(columns=[target_col]), train_set[target_col]
   st.session_state.X_y_train = [X_train.to_numpy(), y_train.to_numpy().reshape(-1, 1)]
@@ -128,10 +131,29 @@ def adjust_dataset():
 st.header("Dataset")
 dataset_option = st.selectbox("Select Dataset", ["AND Gate (Built-in)", "Upload a Dataset"])
 
+def clear_dataset_state():
+  for key in ("uploaded_dataset", "target_type", "target_name", "model", "train_set", "test_set",
+              "data", "history", "test_results", "uploaded_file_id"):
+    st.session_state[key] = None
+  st.session_state.model_compiled = False
+  st.session_state.X_y_train = []
+  st.session_state.X_y_test = []
+  st.session_state.activations = []
+  for key in ("form_drop_columns", "form_one_hot_columns", "form_standardize_columns"):
+    st.session_state.pop(key, None)
+
 if dataset_option == "Upload a Dataset":
-  st.session_state.dataset_source = "upload"
+  if st.session_state.get("dataset_source") != "upload":
+    clear_dataset_state()  # leaving the AND gate: start with a clear screen
+    st.session_state.dataset_source = "upload"
   uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
-  if uploaded_file is not None:
+  if uploaded_file is None:
+    if st.session_state.get("uploaded_file_id") is not None:
+      clear_dataset_state()  # file was removed
+  else:
+    if st.session_state.get("uploaded_file_id") != uploaded_file.file_id:
+      clear_dataset_state()  # a new file replaces whatever was loaded
+      st.session_state.uploaded_file_id = uploaded_file.file_id
     if st.session_state.uploaded_dataset is None:
       dataset = pd.read_csv(uploaded_file)
       st.session_state.uploaded_dataset = dataset
@@ -177,6 +199,7 @@ elif dataset_option == "AND Gate (Built-in)":
     st.session_state.model_compiled = False
     st.session_state.activations = []
     st.session_state.history = None
+    st.session_state.test_results = None
 
 # DISPLAY TRAIN, TEST SETS
 if st.session_state.train_set is None:
@@ -222,6 +245,7 @@ def delete_layer_callback(index):
     st.session_state.model_compiled = False
     st.session_state.history = None
     st.session_state.data = None
+    st.session_state.test_results = None
 
 if not st.session_state.model.layers:
   st.caption("No layers added yet.")
@@ -346,8 +370,42 @@ if submitted:
     X_train, y_train = st.session_state.X_y_train
     st.session_state.trainer.train(X_train, y_train, batch_size, learning_rate, epochs = epochs, verbose = False, on_epoch_end = update_progress)
     st.session_state.history = st.session_state.trainer.save_history()
+    st.session_state.test_results = None
     progress_bar.empty()
     st.success("Training completed!")
+
+# TEST
+
+st.header("Testing")
+
+if st.button("Evaluate on Test Set"):
+  if not st.session_state.model_compiled or st.session_state.history is None:
+    st.error("Please compile and train the model first.")
+  else:
+    X_test, y_test = st.session_state.X_y_test
+    # quiet predict without for_plot: does not touch the training history
+    predictions, test_loss, test_score = st.session_state.trainer.predict(X_test, y_test, quiet=True)
+    results = {"loss": float(test_loss), "score": float(test_score), "n": int(X_test.shape[0])}
+    if st.session_state.target_type == "classification":
+      results["matrix"] = st.session_state.trainer.confusion_matrix(y_test, predictions)
+    st.session_state.test_results = results
+
+results = st.session_state.test_results
+if results is not None:
+  st.caption(f"Evaluated on {results['n']} test rows.")
+  if st.session_state.target_type == "classification":
+    col_a, col_l = st.columns(2)
+    col_a.metric("Accuracy", f"{results['score']:.4f}")
+    col_l.metric("Loss", f"{results['loss']:.4f}")
+    matrix = results["matrix"]
+    st.caption("Confusion matrix")
+    st.dataframe(pd.DataFrame(
+      [[matrix["tn"], matrix["fp"]], [matrix["fn"], matrix["tp"]]],
+      index=["Actual 0", "Actual 1"], columns=["Predicted 0", "Predicted 1"]))
+  else:
+    col_l, col_r = st.columns(2)
+    col_l.metric("Loss (MSE)", f"{results['loss']:.4f}")
+    col_r.metric("R2 score", f"{results['score']:.4f}")
 
 # PLOT
 st.header("Training History")
