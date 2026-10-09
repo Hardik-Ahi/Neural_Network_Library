@@ -21,7 +21,9 @@ def der_leaky_relu(leak = 0.1, alpha = 1):
     return func
 
 def sigmoid_func(x):
-    return 1 / (1 + np.exp(-np.asarray(x, dtype=float)))
+    x = np.asarray(x, dtype=float)
+    e = np.exp(-np.abs(x))  # never overflows
+    return np.where(x >= 0, 1 / (1 + e), e / (1 + e))
 
 sigmoid = sigmoid_func
 

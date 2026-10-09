@@ -101,6 +101,11 @@ def preprocess_dataset():
     X_means, X_stds = standardize_data(train_set, st.session_state.form_standardize_columns)
     standardize_data(test_set, st.session_state.form_standardize_columns, from_means=X_means, from_stds=X_stds)
 
+  if target_type == "regression" and target_col not in (st.session_state.form_standardize_columns or []):
+    # a large-valued target makes the loss enormous and stalls learning, so always scale it (R2 is unaffected)
+    y_means, y_stds = standardize_data(train_set, [target_col])
+    standardize_data(test_set, [target_col], from_means=y_means, from_stds=y_stds)
+    st.session_state.target_stats = (float(y_means[target_col]), float(y_stds[target_col]))
   st.session_state.uploaded_dataset = raw_data
   st.session_state.train_set = train_set
   st.session_state.test_set = test_set
