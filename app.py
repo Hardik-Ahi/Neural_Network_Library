@@ -213,16 +213,37 @@ with st.form("add_layers_form"):
 
 # Display model summary
 st.subheader("Model Summary")
-layers_summary = pd.DataFrame([
-    {"Layer": i+1, "Number of Neurons": l.n_neurons, "Activation Function": st.session_state.activations[i]}
-    for i, l in enumerate(st.session_state.model.layers)
-])
-st.dataframe(layers_summary, hide_index=True)
+
+def delete_layer_callback(index):
+    st.session_state.model.layers.pop(index)
+    st.session_state.activations.pop(index)
+    # the weights no longer match the architecture, so the model must be recompiled and any history is stale
+    st.session_state.model.weights = []
+    st.session_state.model_compiled = False
+    st.session_state.history = None
+    st.session_state.data = None
+
+if not st.session_state.model.layers:
+  st.caption("No layers added yet.")
+else:
+  header = st.columns([1, 3, 3, 1])
+  for col, title in zip(header, ["Layer", "Number of Neurons", "Activation Function", ""]):
+    col.markdown(f"**{title}**")
+  for i, l in enumerate(st.session_state.model.layers):
+    row = st.columns([1, 3, 3, 1], vertical_alignment="center")
+    row[0].write(i+1)
+    row[1].write(l.n_neurons)
+    row[2].write(st.session_state.activations[i])
+    row[3].button("", icon=":material/delete:", key=f"delete_layer_{i}", help=f"Delete layer {i+1}",
+                  on_click=delete_layer_callback, args=(i,))
 
 if st.button("Compile Model"):
-  st.session_state.model.compile()
-  st.session_state.model_compiled = True
-  st.success("Model compiled!")
+  if len(st.session_state.model.layers) < 2:
+    st.error("Please add at least two layers (an input layer and an output layer) before compiling.")
+  else:
+    st.session_state.model.compile()
+    st.session_state.model_compiled = True
+    st.success("Model compiled!")
 
 if st.checkbox("Show Weights and Biases") and st.session_state.model_compiled:
   st.subheader("Weights and Biases")
